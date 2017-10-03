@@ -21,23 +21,6 @@ outputDir
 
 ######################################################################
 
-do_linear_regression <- function(DV, formula, training_set, testing_set)
-{
-  ######################################################################
-  # Linear Regression
-  #
-  lm.fit <- lm(formula, data=training_set)
-  summary(lm.fit)
-  predicted.lm <- predict(lm.fit,testing_set) # vector
-  MSE.lm <- (sum((predicted.lm - testing_set[DV])^2)/nrow(testing_set) ) %>% 
-    round(digits = 4)
-  MSE.lm %>% paste(., "MSE-Linear Regression") %>% print
-  
-  return(predicted.lm)
-}
-
-
-
 print_both_predictions <- function(DV, predicted_nn, predicted_lm, palette_label) {
   require(ggplot2)
   # coerce into dataframe: df, matrix, vector!
@@ -83,7 +66,7 @@ print_separate_predictions <- function(DV, predicted_nn, predicted_lm, palette_l
 
 ######################################################################
 #
-# Collapse raw data to feature set 
+# Get data: Extracts the feature set from raw data 
 #
 ######################################################################
 get_data <- function(DV, features, split_ratio)
@@ -120,11 +103,83 @@ get_data <- function(DV, features, split_ratio)
   return(list(formula, trainingset, testingset))
 }
 
+# # define design dimensions
+Tool    <- data[, c("practical", "functional", "useful")]
+Novelty <- data[, c("exciting", "creative", "unique")]
+Simplicity <- data[, c("simple", "clear", "minimalistic")]
+Energy <- data[, c("powerful", "clever", "intuitive")]
 
+Dimensions <- list(Tool, Novelty, Simplicity, Energy)
 
+# calculate cronbach alpha
+lapply(Dimensions, function(dim) {
+  dim %>% psych::alpha(.) %>% .$total %>% .$std.alpha %>% round(digits = 2)
+})
+# 
+# # cronbach alpha results: 
+# Study1 <> Study2
+# 0.80 - 0.88 Tool
+# 0.80 - 0.86 Novelty
+# 0.77 - 0.81 Simplicity
+# 0.78 - 0.73 Energy
 
-trainRandomForest <- function(DV, features, formula, 
-                              training_set, testing_set, mode, palette)
+(.80+.80+.77+.78)/4 
+(.88+.86+.81+.73)/4
+
+######################################################################
+#
+# Benchmarking Reference: Linear Regression
+#
+######################################################################
+do_linear_regression <- function(DV, formula, training_set, testing_set)
+{
+  ######################################################################
+  # Linear Regression
+  #
+  lm.fit <- lm(formula, data=training_set)
+  summary(lm.fit)
+  predicted.lm <- predict(lm.fit,testing_set) # vector
+  MSE.lm <- (sum((predicted.lm - testing_set[DV])^2)/nrow(testing_set) ) %>% 
+    round(digits = 4)
+  MSE.lm %>% paste(., "MSE-Linear Regression") %>% print
+  
+  return(predicted.lm)
+}
+
+######################################################################
+#
+# Machine Learning Methods
+#
+######################################################################
+
+######################################################################
+# Boosted Decision Trees
+######################################################################
+train_boosted_decision_tree <- function(DV, formula, training_set, testing_set, palette)
+{
+  require(gbm)
+  
+  fit <- gbm(formula = formula, 
+             data = training_set,
+             distribution="gaussian")
+  
+  # summarize the fit
+  par(las=1)
+  par(mar=c(3,6,1,2))
+  summary(fit) 
+  # make predictions
+  predictions <- predict(fit, testing_set, n.trees = 4)
+  # summarize accuracy
+  mse <- mean((testing_set[,DV] - predictions)^2)
+  mse %>% round(digits = 4) %>% paste(., "MSE-Boosted Decision Trees")%>% print
+  
+  return(fit)
+}
+
+######################################################################
+# Random Forests
+######################################################################
+trainRandomForest <- function(DV, formula, training_set, testing_set, palette)
 {
   require(randomForest)
   model <- randomForest(formula, ntree = 500, data = training_set) 
@@ -143,96 +198,21 @@ trainRandomForest <- function(DV, features, formula,
   
 }
 
-main_boosted_decision_tree <- function(DV, features, mode, palette)
+######################################################################
+# Neural Network
+######################################################################
+trainNeuralNetwork <- function(DV, formula, training_set, testing_set, 
+                               hidden_layers, mode, predicted_lm, palette)
 {
-  require(gbm)
-  # load data
-  data.list <- get_data(DV, features, split_ratio = 0.70)
-  formula     <- data.list[[1]]
-  trainingset <- data.list[[2]]
-  testingset  <- data.list[[3]]
-  
-  do_linear_regression(DV, formula, trainingset, testingset)
-  
-  fit <- gbm(formula = formula, 
-             data = trainingset,
-             distribution="gaussian")
-  
-  # summarize the fit
-  par(las=1)
-  par(mar=c(3,6,1,2))
-  summary(fit) 
-  # make predictions
-  predictions <- predict(fit, testingset, n.trees = 4)
-  # summarize accuracy
-  mse <- mean((testingset[,DV] - predictions)^2)
-  mse %>% round(digits = 4) %>% paste(., "MSE-Boosted Decision Trees")%>% print
-  
-  return(fit)
-}
-
-
-main_random_forest <- function(DV, features, mode, palette)
-{
-  
-  data <- get_data(DV, features, split_ratio = 0.70)
-  formula     <- data[[1]]
-  trainingset <- data[[2]]
-  testingset  <- data[[3]]
-  
-  do_linear_regression(DV, formula, trainingset, testingset)
-  
-  result <- trainRandomForest(DV, features, formula, 
-                              trainingset, testingset, 
-                              mode, palette) # Paired, RdBu
-  return(result)
-}
-
-main_neural_network <- function(DV, features, hidden_layers, mode, palette)
-{
-  
-  data.list <- get_data(DV, features, split_ratio = 0.70)
-  
-  formula     <- data.list[[1]]
-  trainingset <- data.list[[2]]
-  testingset  <- data.list[[3]]
-  
-  
-  result <- trainNeuralNetwork(DV, formula, 
-                               trainingset, testingset, 
-                               hidden_layers, 
-                               mode, palette) # Paired, RdBu
-  return(result)
-}
-
-trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, mode, palette)
-{
-  
-  predicted.lm <- do_linear_regression(DV, formula, training_set, testing_set)
-  
   ######################################################################
-  # Neural Network
-  if (mode=="neuralBenchmark")
-  {
-    require(mxnet)
-    mx.set.seed(0)
-    model <- mx.mlp(training_set, DV, 
-                    hidden_node=10, out_node=2, out_activation="softmax",
-                    num.round=20, array.batch.size=15, learning.rate=0.07, momentum=0.9, 
-                    eval.metric=mx.metric.accuracy)
-    predicted.values = predict(model, testing_set[-1])
-    ## Auto detect layout of input matrix, use rowmajor..
-    # pred.label = max.col(t(predicted.values))-1
-    # table(pred.label, test.y)
-    
-    
-  } else {
-    # trainingset must only contain same variables as testing set, NOT MORE!
-    nn <- neuralnet(formula,training_set,hidden=layers,linear.output=FALSE)
-    
-    # Compute Predictions from testing set. MUST remove DV!!
-    predicted.values <- compute(nn,testing_set[-1])
-  }
+  # train neural network
+  
+  # trainingset must only contain same variables as testing set, NOT MORE!
+  nn <- neuralnet(formula,training_set,hidden=hidden_layers,linear.output=FALSE)
+  
+  # Compute Predictions from testing set. MUST remove DV!!
+  predicted.values <- compute(nn,testing_set[-1])
+  
   
   predicted.neural <- predicted.values$net.result # matrix
   observed.neural <- testing_set[DV] # dataframe
@@ -259,9 +239,9 @@ trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, m
   
   if(mode == "integrate") 
   {
-    pred <- print_both_predictions(observed.neural, predicted.neural, predicted.lm, palette)
+    pred <- print_both_predictions(observed.neural, predicted.neural, predicted_lm, palette)
   } else if (mode == "separate") {
-    pred <- print_separate_predictions(observed.neural, predicted.neural, predicted.lm, palette)
+    pred <- print_separate_predictions(observed.neural, predicted.neural, predicted_lm, palette)
   } else if (mode == "neuralBenchmark")
   {
     pred <- NULL
@@ -277,11 +257,104 @@ trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, m
   return(list(nn, pred, MSE.nn))
 }
 
-main <- function(item_type=NULL) 
+
+######################################################################
+#
+# Mxnet: custom stopping criterion
+#
+######################################################################
+mx.callback.train.stop <- function(tol = 1e-3, 
+                                   mean.n = 1e2, 
+                                   period = 100, 
+                                   min.iter = 100) 
 {
+  function(iteration, nbatch, env, verbose = TRUE) {
+    if (nbatch == 0 & !is.null(env$metric)) {
+      continue <- TRUE
+      acc.train <- env$metric$get(env$train.metric)$value
+      if (is.null(env$acc.log)) {
+        env$acc.log <- acc.train
+      } else {
+        if ((abs(acc.train - mean(tail(env$acc.log, mean.n))) < tol &
+             abs(acc.train - max(env$acc.log)) < tol &
+             iteration > min.iter) | 
+            acc.train == 1) {
+          cat("Training finished with final accuracy: ", 
+              round(acc.train * 100, 2), " %\n", sep = "")
+          continue <- FALSE 
+        }
+        env$acc.log <- c(env$acc.log, acc.train)
+      }
+    }
+    if (iteration %% period == 0) {
+      cat("[", iteration,"]"," training accuracy: ", 
+          round(acc.train * 100, 2), " %\n", sep = "") 
+    }
+    return(continue)
+  }
+}
+
+
+######################################################################
+#
+# trainMxnetNeural
+#
+######################################################################
+trainMxnetNeural <- function(DV, formula, training_set, testing_set, 
+                             hidden_nodes, mode, predicted_lm, palette)
+{
+  require(mxnet)
+  mx.set.seed(0)
+  
+  train.x <- training_set[-1] %>% data.matrix
+  train.y <- training_set[,1] # must be a vector <> [1] returns dataframe!
+  test.x <- testing_set[-1]  %>% data.matrix
+  test.y <- testing_set[,1] # must be a vector <> [1] returns dataframe!
+  
+  model <- mx.mlp(data=train.x, label=train.y,
+                  hidden_node=hidden_nodes, out_node=1, 
+                  # activation="tanh", 
+                  out_activation="softmax",
+                  num.round=2000, array.batch.size=100, 
+                  learning.rate=0.01, momentum=0.9, 
+                  eval.metric=mx.metric.accuracy,
+                  array.layout="rowmajor",
+                  device = mx.ctx.default(),
+                  epoch.end.callback = mx.callback.train.stop()
+  )
+  ## Auto detect layout of input matrix, use rowmajor..
+  predicted.values = predict(model, test.x, array.layout = "rowmajor")
+  
+  #######
+  # FROM HERE: sucks!
+  mean((predicted.values-test.y)^2)
+  
+  pred.label = max.col(t(predicted.values))-1 
+  pred.table <- table(pred.label, test.y) %>% print
+  
+  # predicted.neural <- predicted.values$net.result # matrix
+  observed.neural <- testing_set[DV] # dataframe
+  MSE.nn <- sum( ((observed.neural - pred.label)^2)/nrow(pred.label))
+  MSE.nn %>% round(digits = 4) %>% paste(., "MSE-Neural Network") %>% print
+  
+  
+}
+
+######################################################################
+#
+# MAIN
+#
+######################################################################
+
+main <- function(item_type=NULL, hidden_layers=NULL) 
+{
+  #########################################################################################
   # define DV
-  DV <- "NPS"  
+  DV <- "NPS"
+  
+  #########################################################################################
   # define features
+  #
   design.descriptives <- inputDir %>% paste0(., "design.descriptives.rds") %>% readRDS
   
   emotions <- inputDir %>% paste0(., "emotions.rds") %>% readRDS %>%
@@ -290,75 +363,105 @@ main <- function(item_type=NULL)
   if(is.null(item_type))
   {
     features <- c(design.descriptives, emotions)
+    
   } else if(item_type=="design")
   {
     features <- design.descriptives 
+    
   } else if (item_type=="emotion")
   {
     features <- emotions
   }
   
+  
+  #########################################################################################
+  # generate training/testing set
+  #
+  data.list <- get_data(DV, features, split_ratio = 0.70)
+  formula     <- data.list[[1]] # contains all features
+  trainingset <- data.list[[2]]
+  testingset  <- data.list[[3]]
+  
+  #########################################################################################
+  # create benchmark reference: mse (linear regression)
+  #
+  predicted.lm <- do_linear_regression(DV, formula, trainingset, testingset)
+  
+  #########################################################################################
+  # run machine learning model
+  #
   if (mode=="neuralNetwork")
   {
-    result <- main_neural_network(DV, features, 
-                                  hidden_layers=c(5,5,5),
-                                  # mode="integrate", # print predictions integrate | separate
-                                  mode="separate", 
-                                  # palette = "RdBu") # Paired, RdBu
-                                  palette = "Paired") # Paired, RdBu
-  } else if (mode=="neuralBenchmark") {
-    {
-      # prepare k iterations to calculate error
-      # set.seed(450)
-      cv.error <- NULL
-      k <- 1
-      require(plyr) 
-      pbar <- create_progress_bar('text')
-      pbar$init(k)
-      
-      for(i in 1:k)
-      {
-        result <- main_neural_network(DV, features, 
-                                      hidden_layers=c(5,5,5),
-                                      # mode="integrate", # print predictions integrate | separate
-                                      mode="neuralBenchmark", 
-                                      # palette = "RdBu") # Paired, RdBu
-                                      palette = "Paired") # Paired, RdBu
-        cv.error[i] <- result[[3]]
-        pbar$step()
-      }
-      mean(cv.error)
-      
-      boxplot(cv.error,xlab='MSE CV',col='cyan',
-              border='blue',names='CV error (MSE)',
-              main='CV error (MSE) for NN',horizontal=TRUE)
-    }
+    result <- trainNeuralNetwork(DV, formula, 
+                                 trainingset, testingset, 
+                                 hidden_layers=hidden_layers,
+                                 # mode="integrate",  # print predictions 1
+                                 mode="separate",     # print predictions 2
+                                 predicted.lm, 
+                                 palette = "Paired") # Paired, RdBu
+    
+  } else if (mode=="neuralMxnet") {
+    
+    result <- trainMxnetNeural(DV, formula, 
+                               trainingset, testingset, 
+                               hidden_nodes = 5,
+                               # mode="integrate",  # print predictions 1
+                               mode="separate",     # print predictions 2
+                               predicted.lm, 
+                               palette = "Paired") # Paired, RdBu
+    
     
   } else if (mode=="boostedDecisionTrees") {
     
-    result <- main_boosted_decision_tree(DV, features, 
-                                         mode="integrate",
-                                         palette = "RdBu") # Paired, RdBu
+    result <- train_boosted_decision_tree(DV, formula, trainingset, testingset,
+                                          palette = "RdBu") # Paired, RdBu
+    
   } else if (mode=="randomForest") {
     
-    result <- main_random_forest(DV, features,
-                                 mode="integrate",
-                                 palette = "RdBu") # Paired, RdBu
-  } 
+    result <- trainRandomForest(DV, formula, trainingset, testingset, 
+                                palette = "RdBu") # Paired, RdBu
+    
+  } else if (mode=="neuralBenchmark") {
+    
+    # prepare k iterations to calculate error
+    # set.seed(450)
+    cv.error <- NULL
+    k <- 1
+    require(plyr) 
+    pbar <- create_progress_bar('text')
+    pbar$init(k)
+    
+    for(i in 1:k)
+    {
+      result <- main_neural_network(DV, features, 
+                                    hidden_layers=c(2,2),
+                                    # mode="integrate", # print predictions integrate | separate
+                                    mode="neuralBenchmark", 
+                                    # palette = "RdBu") # Paired, RdBu
+                                    palette = "Paired") # Paired, RdBu
+      cv.error[i] <- result[[3]]
+      pbar$step()
+    }
+    mean(cv.error)
+    
+    boxplot(cv.error,xlab='MSE CV',col='cyan',
+            border='blue',names='CV error (MSE)',
+            main='CV error (MSE) for NN',horizontal=TRUE)
+  }
+  
   return(result)
 }
 
 # mode <- "neuralNetwork" # 1l-3n:.0282,1l-2n:.0283, 2l-5n:.0261,3l-3n:
-mode <- "neuralBenchmark"
+# mode <- "neuralMxnet"
+# mode <- "neuralBenchmark"
 # mode <- "boostedDecisionTrees"
-# mode = "randomForest"
+mode = "randomForest"
 system.time(
-  result <- main("design")
-  # result <- main("emotion")
-  # result <- main()
+  result <- main("design", c(4,3,3))
+  # result <- main("emotion",  c(5,3,2))
+  # result <- main(, c(5,5,5))
 )
-
-
 
 
 #### random forests
