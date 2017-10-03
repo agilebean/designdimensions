@@ -36,56 +36,6 @@ do_linear_regression <- function(DV, formula, training_set, testing_set)
   return(predicted.lm)
 }
 
-trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, mode, palette)
-{
-  
-  predicted.lm <- do_linear_regression(DV, formula, training_set, testing_set)
-  
-  ######################################################################
-  # Neural Network
-  # trainingset must only contain same variables as testing set, NOT MORE!
-  nn <- neuralnet(formula,training_set,hidden=layers,linear.output=FALSE)
-  
-  # Compute Predictions from testing set. MUST remove DV!!
-  predicted.values <- compute(nn,testing_set[-1])
-  
-  observed.neural <- testing_set[DV] # dataframe
-  predicted.neural <- predicted.values$net.result # matrix
-  
-  # cbind(observed, predicted, (observed-predicted)/observed) %>% round(digits=2) %>% print
-  # table(observed,predicted)
-  
-  # observed.neural.normal <- (testing_set$NPS)*(max(data$NPS)-min(data$NPS))+min(data$NPS)
-  # predicted.neural.normal <- predicted.values$net.result*(max(data$NPS)-min(data$NPS))+min(data$NPS)
-  # MSE.nn <- sum( ((observed.neural.normal - predicted.neural.normal)^2)/nrow(predicted.neural.normal))
-  
-  MSE.nn <- sum( ((observed.neural - predicted.neural)^2)/nrow(predicted.neural))
-  
-  MSE.nn %>% round(digits = 4) %>% paste(., "MSE-Neural Network") %>% print
-  
-  ######################################################################
-  # Visualize Prediction Quality: NN vs. LM
-  #
-  ### ifelse does NOT work if ggplot object is returned!!! ###
-  # pred <- ifelse(mode == "integrate", 
-  #        print_both_predictions(observed.neural, predicted.neural, predicted.lm, palette),
-  #        print_separate_predictions(observed.neural, predicted.neural, predicted.lm, palette)
-  # )
-  
-  if(mode == "integrate") 
-  {
-    pred <- print_both_predictions(observed.neural, predicted.neural, predicted.lm, palette)
-  } else if (mode == "separate") {
-    pred <- print_separate_predictions(observed.neural, predicted.neural, predicted.lm, palette)
-  }
-  
-  ######################################################################
-  # plot neural net with NeuralNetTools
-  require(NeuralNetTools)
-  plotnet(nn)
-  
-  return(list(nn, pred, MSE.nn))
-}
 
 
 print_both_predictions <- function(DV, predicted_nn, predicted_lm, palette_label) {
@@ -171,22 +121,7 @@ get_data <- function(DV, features, split_ratio)
 }
 
 
-main_neural_network <- function(DV, features, hidden_layers, mode, palette)
-{
-  
-  data.list <- get_data(DV, features, split_ratio = 0.70)
-  
-  formula     <- data.list[[1]]
-  trainingset <- data.list[[2]]
-  testingset  <- data.list[[3]]
-  
-  
-  result <- trainNeuralNetwork(DV, formula, 
-                               trainingset, testingset, 
-                               hidden_layers, 
-                               mode, palette) # Paired, RdBu
-  return(result)
-}
+
 
 trainRandomForest <- function(DV, features, formula, 
                               training_set, testing_set, mode, palette)
@@ -253,6 +188,94 @@ main_random_forest <- function(DV, features, mode, palette)
   return(result)
 }
 
+main_neural_network <- function(DV, features, hidden_layers, mode, palette)
+{
+  
+  data.list <- get_data(DV, features, split_ratio = 0.70)
+  
+  formula     <- data.list[[1]]
+  trainingset <- data.list[[2]]
+  testingset  <- data.list[[3]]
+  
+  
+  result <- trainNeuralNetwork(DV, formula, 
+                               trainingset, testingset, 
+                               hidden_layers, 
+                               mode, palette) # Paired, RdBu
+  return(result)
+}
+
+trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, mode, palette)
+{
+  
+  predicted.lm <- do_linear_regression(DV, formula, training_set, testing_set)
+  
+  ######################################################################
+  # Neural Network
+  if (mode=="neuralBenchmark")
+  {
+    require(mxnet)
+    mx.set.seed(0)
+    model <- mx.mlp(training_set, DV, 
+                    hidden_node=10, out_node=2, out_activation="softmax",
+                    num.round=20, array.batch.size=15, learning.rate=0.07, momentum=0.9, 
+                    eval.metric=mx.metric.accuracy)
+    predicted.values = predict(model, testing_set[-1])
+    ## Auto detect layout of input matrix, use rowmajor..
+    # pred.label = max.col(t(predicted.values))-1
+    # table(pred.label, test.y)
+    
+    
+  } else {
+    # trainingset must only contain same variables as testing set, NOT MORE!
+    nn <- neuralnet(formula,training_set,hidden=layers,linear.output=FALSE)
+    
+    # Compute Predictions from testing set. MUST remove DV!!
+    predicted.values <- compute(nn,testing_set[-1])
+  }
+  
+  predicted.neural <- predicted.values$net.result # matrix
+  observed.neural <- testing_set[DV] # dataframe
+  
+  # cbind(observed, predicted, (observed-predicted)/observed) %>% round(digits=2) %>% print
+  # table(observed,predicted)
+  
+  # observed.neural.normal <- (testing_set$NPS)*(max(data$NPS)-min(data$NPS))+min(data$NPS)
+  # predicted.neural.normal <- predicted.values$net.result*(max(data$NPS)-min(data$NPS))+min(data$NPS)
+  # MSE.nn <- sum( ((observed.neural.normal - predicted.neural.normal)^2)/nrow(predicted.neural.normal))
+  
+  MSE.nn <- sum( ((observed.neural - predicted.neural)^2)/nrow(predicted.neural))
+  
+  MSE.nn %>% round(digits = 4) %>% paste(., "MSE-Neural Network") %>% print
+  
+  ######################################################################
+  # Visualize Prediction Quality: NN vs. LM
+  #
+  ### ifelse does NOT work if ggplot object is returned!!! ###
+  # pred <- ifelse(mode == "integrate", 
+  #        print_both_predictions(observed.neural, predicted.neural, predicted.lm, palette),
+  #        print_separate_predictions(observed.neural, predicted.neural, predicted.lm, palette)
+  # )
+  
+  if(mode == "integrate") 
+  {
+    pred <- print_both_predictions(observed.neural, predicted.neural, predicted.lm, palette)
+  } else if (mode == "separate") {
+    pred <- print_separate_predictions(observed.neural, predicted.neural, predicted.lm, palette)
+  } else if (mode == "neuralBenchmark")
+  {
+    pred <- NULL
+  }
+  
+  ######################################################################
+  # plot neural net with NeuralNetTools
+  if (!(mode=="neuralBenchmark"))
+  {
+    require(NeuralNetTools)
+    plotnet(nn)    
+  }
+  return(list(nn, pred, MSE.nn))
+}
 
 main <- function(item_type=NULL) 
 {
@@ -286,9 +309,9 @@ main <- function(item_type=NULL)
   } else if (mode=="neuralBenchmark") {
     {
       # prepare k iterations to calculate error
-      set.seed(450)
+      # set.seed(450)
       cv.error <- NULL
-      k <- 2
+      k <- 1
       require(plyr) 
       pbar <- create_progress_bar('text')
       pbar$init(k)
@@ -296,15 +319,16 @@ main <- function(item_type=NULL)
       for(i in 1:k)
       {
         result <- main_neural_network(DV, features, 
-                                      hidden_layers=c(1),
+                                      hidden_layers=c(5,5,5),
                                       # mode="integrate", # print predictions integrate | separate
-                                      mode="separate", 
+                                      mode="neuralBenchmark", 
                                       # palette = "RdBu") # Paired, RdBu
                                       palette = "Paired") # Paired, RdBu
         cv.error[i] <- result[[3]]
         pbar$step()
       }
       mean(cv.error)
+      
       boxplot(cv.error,xlab='MSE CV',col='cyan',
               border='blue',names='CV error (MSE)',
               main='CV error (MSE) for NN',horizontal=TRUE)
