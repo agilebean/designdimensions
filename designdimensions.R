@@ -6,14 +6,15 @@ library(magrittr)
 library(neuralnet)
 library(NeuralNetTools)
 
-source("/Users/Chaehan/Dropbox/01 IDAS Prof/06 Data Analysis/06 R Scripts/utils.R")
-dir <- "/Users/Chaehan/Dropbox/01 IDAS Prof/06 Data Analysis/06 Machine Learning"
-setwd(dir)
+prefix <- gsub("^(/.*/.*?)/.*", "\\1", getwd())
+source(paste0(prefix, "/Dropbox/01 IDAS Prof/06 Data Analysis/06 R Scripts/utils.R"))
+set_input_output_dir()
+inputDir
+outputDir
 
 ######################################################################
 
-
-trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, mode, palette)
+do_linear_regression <- function(DV, formula, training_set, testing_set)
 {
   ######################################################################
   # Linear Regression
@@ -21,12 +22,23 @@ trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, m
   lm.fit <- lm(formula, data=training_set)
   summary(lm.fit)
   predicted.lm <- predict(lm.fit,testing_set) # vector
-  MSE.lm <- (sum((predicted.lm - testing_set[DV])^2)/nrow(testing_set) )
+  MSE.lm <- (sum((predicted.lm - testing_set[DV])^2)/nrow(testing_set) ) %>% 
+    round(digits = 4)
+  MSE.lm %>% paste(., "MSE-Linear Regression") %>% print
+  
+  return(predicted.lm)
+}
+
+trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, mode, palette)
+{
+  
+  predicted.lm <- do_linear_regression(DV, formula, training_set, testing_set)
   
   ######################################################################
   # Neural Network
   # trainingset must only contain same variables as testing set, NOT MORE!
   nn <- neuralnet(formula,training_set,hidden=layers,linear.output=FALSE)
+  
   # Compute Predictions from testing set. MUST remove DV!!
   predicted.values <- compute(nn,testing_set[-1])
   
@@ -42,7 +54,7 @@ trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, m
   
   MSE.nn <- sum( ((observed.neural - predicted.neural)^2)/nrow(predicted.neural))
   
-  c(MSE.lm,MSE.nn) %>% round(digits = 3) %>% print
+  MSE.nn %>% round(digits = 4) %>% paste(., "MSE-Neural Network") %>% print
   
   ######################################################################
   # Visualize Prediction Quality: NN vs. LM
@@ -56,7 +68,7 @@ trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, m
   if(mode == "integrate") 
   {
     pred <- print_both_predictions(observed.neural, predicted.neural, predicted.lm, palette)
-  } else {
+  } else if (mode == "separate") {
     pred <- print_separate_predictions(observed.neural, predicted.neural, predicted.lm, palette)
   }
   
@@ -98,11 +110,11 @@ print_separate_predictions <- function(DV, predicted_nn, predicted_lm, palette_l
     ggtitle("Observed vs. Predicted Values") +
     scale_color_brewer(palette = palette_label)
   
-  gg1 <- ggplot(data, mapping = aes(x=observed)) +
+  gg1 <- plot.base +
     geom_point(aes(y=predicted.nn, color="neural")) +
     geom_smooth(method=lm, aes(y=predicted.nn, color="neural"))
   
-  gg2 <- ggplot(data, mapping = aes(x=observed)) +
+  gg2 <- plot.base +
     geom_point(aes(y=predicted.lm, color="linear")) +
     geom_smooth(method=lm, aes(y=predicted.lm, color="linear"))
   
@@ -117,12 +129,9 @@ print_separate_predictions <- function(DV, predicted_nn, predicted_lm, palette_l
 # Collapse raw data to feature set 
 #
 ######################################################################
-
-get_data <- function(DV, split_ratio)
+get_data <- function(DV, features, split_ratio)
 {
-  # get data
-  features  <- read_machinelearning_data("NPS") %>% .[[2]]
-  data      <- read_machinelearning_data("NPS") %>% .[[1]] %>% 
+  data  <- read_machinelearning_data(DV, features, inputDir) %>%  
     select(., one_of(c(DV, features)))
   
   # create formula from features
@@ -148,28 +157,141 @@ get_data <- function(DV, split_ratio)
   return(list(formula, trainingset, testingset))
 }
 
-main <- function(DV, hidden_layers, mode, palette)
+
+main_neural_network <- function(DV, features, hidden_layers, mode, palette)
 {
   
-  data <- get_data(DV, split_ratio = 0.70)
-  result <- trainNeuralNetwork(DV, formula = data[[1]], 
-                               training_set = data[[2]], testing_set = data[[3]], 
+  data.list <- get_data(DV, features, split_ratio = 0.70)
+  
+  formula     <- data.list[[1]]
+  trainingset <- data.list[[2]]
+  testingset  <- data.list[[3]]
+  
+  
+  result <- trainNeuralNetwork(DV, formula, 
+                               trainingset, testingset, 
                                hidden_layers, 
                                mode, palette) # Paired, RdBu
   return(result)
 }
 
-# first run
+trainRandomForest <- function(DV, features, formula, 
+                              training_set, testing_set, mode, palette)
+{
+  require(randomForest)
+  model <- randomForest(formula, ntree = 500, data = training_set) 
+  mse <- model %>% .$mse %>% .[length(.)] %>% round(digits = 4) %T>% 
+  { print(paste(., "MSE-Random Forests")) }
+  
+  # predict
+  prediction <- predict(model, newdata = testing_set)
+  
+  # table(pred, testing_set[,DV]) 
+  pred.plot <- plot(prediction) %>% recordPlot
+  
+  imp.plot <- varImpPlot(model) %>% recordPlot
+  
+  return(list(model, pred.plot, imp.plot))
+  
+}
+
+main_boosted_decision_tree <- function(DV, features, mode, palette)
+{
+  require(gbm)
+  # load data
+  data.list <- get_data(DV, features, split_ratio = 0.70)
+  formula     <- data.list[[1]]
+  trainingset <- data.list[[2]]
+  testingset  <- data.list[[3]]
+  
+  do_linear_regression(DV, formula, trainingset, testingset)
+  
+  fit <- gbm(formula = formula, 
+             data = trainingset,
+             distribution="gaussian")
+  
+  # summarize the fit
+  par(las=1)
+  par(mar=c(3,6,1,2))
+  summary(fit) 
+  # make predictions
+  predictions <- predict(fit, testingset, n.trees = 4)
+  # summarize accuracy
+  mse <- mean((testingset[,DV] - predictions)^2)
+  mse %>% round(digits = 4) %>% paste(., "MSE-Boosted Decision Trees")%>% print
+  
+  return(fit)
+}
+
+
+main_random_forest <- function(DV, features, mode, palette)
+{
+  
+  data <- get_data(DV, features, split_ratio = 0.70)
+  formula     <- data[[1]]
+  trainingset <- data[[2]]
+  testingset  <- data[[3]]
+  
+  do_linear_regression(DV, formula, trainingset, testingset)
+  
+  result <- trainRandomForest(DV, features, formula, 
+                              trainingset, testingset, 
+                              mode, palette) # Paired, RdBu
+  return(result)
+}
+
+
+main <- function() 
+{
+  # define DV
+  DV <- "NPS"  
+  # define features
+  design.descriptives <- inputDir %>% paste0(., "design.descriptives.rds") %>% readRDS
+  
+  emotions <- inputDir %>% paste0(., "emotions.rds") %>% readRDS %>%
+    gsub("pleasantly.surprised", "pleasantly", .)
+  
+  features <- c(design.descriptives, emotions)
+  # features <- design.descriptives
+  
+  if (mode=="neuralNetwork")
+  {
+    result <- main_neural_network("NPS", features, 
+                                  hidden_layers=c(5,5,5),
+                                  # mode="integrate", # print predictions integrate | separate
+                                  mode="separate", 
+                                  # palette = "RdBu") # Paired, RdBu
+                                  palette = "Paired") # Paired, RdBu
+  } else if (mode=="boostedDecisionTrees") {
+    
+    result <- main_boosted_decision_tree("NPS", features, 
+                                         mode="integrate",
+                                         palette = "RdBu") # Paired, RdBu
+  } else if (mode=="randomForest") {
+    
+    result <- main_random_forest("NPS", features,
+                                 mode="integrate",
+                                 palette = "RdBu") # Paired, RdBu
+  }
+  return(result)
+}
+
+mode <- "neuralNetwork"
+# mode <- "boostedDecisionTrees"
+mode = "randomForest"
 system.time(
-  result <- main("NPS", 
-                 hidden_layers=c(3,3,3), 
-                 mode="integrate", 
-                 palette = "RdBu") # Paired, RdBu
+  result <- main()
 )
 
+#### random forests
+result[[1]] # model
+result[[2]] # predictions
+result[[3]] # variable importance
+
+#### neural
 # prediction quality
-result[[2]] 
-+ scale_color_brewer("Set1")
+result[[2]] # predictions
+result[[2]] + scale_color_brewer("Paired")
 # neural network
 result[[1]] %>% plotnet 
 
