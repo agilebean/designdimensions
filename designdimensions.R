@@ -7,9 +7,16 @@ library(neuralnet)
 library(NeuralNetTools)
 
 prefix <- gsub("^(/.*/.*?)/.*", "\\1", getwd())
-source(paste0(prefix, "/Dropbox/01 IDAS Prof/06 Data Analysis/06 R Scripts/utils.R"))
+
+if (prefix=="/Users/Chaehan")
+{
+  source(paste0(prefix, "/Dropbox/01 IDAS Prof/06 Data Analysis/06 R Scripts/utils.R"))
+} else {
+  source("/home/chaehan/Dropbox/06 machine learning/06 ML Scripts/_common/utils.R")
+}
+
 set_input_output_dir()
-inputDir
+inputDir 
 outputDir
 
 ######################################################################
@@ -77,7 +84,7 @@ trainNeuralNetwork <- function(DV, formula, training_set, testing_set, layers, m
   require(NeuralNetTools)
   plotnet(nn)
   
-  return(list(nn, pred))
+  return(list(nn, pred, MSE.nn))
 }
 
 
@@ -131,8 +138,14 @@ print_separate_predictions <- function(DV, predicted_nn, predicted_lm, palette_l
 ######################################################################
 get_data <- function(DV, features, split_ratio)
 {
-  data  <- read_machinelearning_data(DV, features, inputDir) %>%  
-    select(., one_of(c(DV, features)))
+  # data  <- read_machinelearning_data(DV, features, inputDir) %>%  
+  #   select(., one_of(c(DV, features)))
+  require(dplyr)
+  require(tidyr)
+  setwd(inputDir)
+  data <- readRDS("data.raw.1955.rds") %>% tbl_df %>% 
+    # explicit dplyr call necessary -> unused argument error (one_of)!!
+    dplyr::select(., one_of(c(DV,features))) 
   
   # create formula from features
   formula <- features %>% paste (., collapse=" + ") %>% paste(DV, "~ ", .) %>%
@@ -241,7 +254,7 @@ main_random_forest <- function(DV, features, mode, palette)
 }
 
 
-main <- function() 
+main <- function(item_type=NULL) 
 {
   # define DV
   DV <- "NPS"  
@@ -251,37 +264,78 @@ main <- function()
   emotions <- inputDir %>% paste0(., "emotions.rds") %>% readRDS %>%
     gsub("pleasantly.surprised", "pleasantly", .)
   
-  features <- c(design.descriptives, emotions)
-  # features <- design.descriptives
+  if(is.null(item_type))
+  {
+    features <- c(design.descriptives, emotions)
+  } else if(item_type=="design")
+  {
+    features <- design.descriptives 
+  } else if (item_type=="emotion")
+  {
+    features <- emotions
+  }
   
   if (mode=="neuralNetwork")
   {
-    result <- main_neural_network("NPS", features, 
+    result <- main_neural_network(DV, features, 
                                   hidden_layers=c(5,5,5),
                                   # mode="integrate", # print predictions integrate | separate
                                   mode="separate", 
                                   # palette = "RdBu") # Paired, RdBu
                                   palette = "Paired") # Paired, RdBu
+  } else if (mode=="neuralBenchmark") {
+    {
+      # prepare k iterations to calculate error
+      set.seed(450)
+      cv.error <- NULL
+      k <- 2
+      require(plyr) 
+      pbar <- create_progress_bar('text')
+      pbar$init(k)
+      
+      for(i in 1:k)
+      {
+        result <- main_neural_network(DV, features, 
+                                      hidden_layers=c(1),
+                                      # mode="integrate", # print predictions integrate | separate
+                                      mode="separate", 
+                                      # palette = "RdBu") # Paired, RdBu
+                                      palette = "Paired") # Paired, RdBu
+        cv.error[i] <- result[[3]]
+        pbar$step()
+      }
+      mean(cv.error)
+      boxplot(cv.error,xlab='MSE CV',col='cyan',
+              border='blue',names='CV error (MSE)',
+              main='CV error (MSE) for NN',horizontal=TRUE)
+    }
+    
   } else if (mode=="boostedDecisionTrees") {
     
-    result <- main_boosted_decision_tree("NPS", features, 
+    result <- main_boosted_decision_tree(DV, features, 
                                          mode="integrate",
                                          palette = "RdBu") # Paired, RdBu
   } else if (mode=="randomForest") {
     
-    result <- main_random_forest("NPS", features,
+    result <- main_random_forest(DV, features,
                                  mode="integrate",
                                  palette = "RdBu") # Paired, RdBu
-  }
+  } 
   return(result)
 }
 
-mode <- "neuralNetwork"
+# mode <- "neuralNetwork" # 1l-3n:.0282,1l-2n:.0283, 2l-5n:.0261,3l-3n:
+mode <- "neuralBenchmark"
 # mode <- "boostedDecisionTrees"
-mode = "randomForest"
+# mode = "randomForest"
 system.time(
-  result <- main()
+  result <- main("design")
+  # result <- main("emotion")
+  # result <- main()
 )
+
+
+
 
 #### random forests
 result[[1]] # model
