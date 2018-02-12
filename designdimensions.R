@@ -7,7 +7,7 @@ library(neuralnet)
 library(NeuralNetTools)
 library(car)
 library(setdir)
-library(utilsGen)
+library(comfort)
 inputDV
 inputML
 
@@ -97,17 +97,17 @@ get_data <- function(DV, features, split_ratio)
 }
 
 # # define design dimensions
-Tool    <- data[, c("practical", "functional", "useful")]
-Novelty <- data[, c("exciting", "creative", "unique")]
-Simplicity <- data[, c("simple", "clear", "minimalistic")]
-Energy <- data[, c("powerful", "clever", "intuitive")]
-
-Dimensions <- list(Tool, Novelty, Simplicity, Energy)
-
-# calculate cronbach alpha
-lapply(Dimensions, function(dim) {
-  dim %>% psych::alpha(.) %>% .$total %>% .$std.alpha %>% round(digits = 2)
-})
+# Tool    <- data[, c("practical", "functional", "useful")]
+# Novelty <- data[, c("exciting", "creative", "unique")]
+# Simplicity <- data[, c("simple", "clear", "minimalistic")]
+# Energy <- data[, c("powerful", "clever", "intuitive")]
+# 
+# Dimensions <- list(Tool, Novelty, Simplicity, Energy)
+# 
+# # calculate cronbach alpha
+# lapply(Dimensions, function(dim) {
+#   dim %>% psych::alpha(.) %>% .$total %>% .$std.alpha %>% round(digits = 2)
+# })
 #
 # # cronbach alpha results:
 # Study1 <> Study2
@@ -456,16 +456,24 @@ main <- function(item_type=NULL, hidden_layers=NULL, palette="Set1")
     boxplot(cv.error,xlab='MSE CV',col='cyan',
             border='blue',names='CV error (MSE)',
             main='CV error (MSE) for NN',horizontal=TRUE)
+    
+  } else if (mode =="vif") {
+    
+    # multicollinearity test with Variance Inflation Factors
+    result <- lm(formula, data=trainingset) %>% car::vif() %>% round(digits = 2)
+
   }
 
   return(result)
 }
 
 # mode <- "neuralNetwork" # 1l-3n:.0282,1l-2n:.0283, 2l-5n:.0261,3l-3n:
-mode <- "neuralMxnet"
+# mode <- "neuralMxnet"
 # mode <- "neuralBenchmark"
 # mode <- "boostedDecisionTrees"
 # mode = "randomForest"
+mode <- "vif"
+
 system.time(
   # result <- main("design", c(4,3,3))
   # result <- main("emotion",  c(3), palette = "Accent")
@@ -474,8 +482,14 @@ system.time(
   # result <- main("emotion",  c(3), palette = "Set1")
   # result <- main("emotion",  c(3), palette = "Set2")
   # result <- main("emotion",  c(3), palette = "Set3")
-  result <- main(, c(3,3))
+  # result <- main(, c(3,3))
+  # result <- main()
+  # result <- main("design")
+  result <- main("emotion")
 )
+
+result %>% as.data.frame()
+result %>% mean %>% round(digits = 2)
 
 
 #### random forests
