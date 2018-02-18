@@ -96,13 +96,6 @@ get_data <- function(DV, features, split_ratio)
   return(list(formula, trainingset, testingset))
 }
 
-# # define design dimensions
-# Tool    <- data[, c("practical", "functional", "useful")]
-# Novelty <- data[, c("exciting", "creative", "unique")]
-# Simplicity <- data[, c("simple", "clear", "minimalistic")]
-# Energy <- data[, c("powerful", "clever", "intuitive")]
-# 
-# Dimensions <- list(Tool, Novelty, Simplicity, Energy)
 # 
 # # calculate cronbach alpha
 # lapply(Dimensions, function(dim) {
@@ -467,25 +460,27 @@ main <- function(item_type=NULL, hidden_layers=NULL, palette="Set1")
   return(result)
 }
 
-# mode <- "neuralNetwork" # 1l-3n:.0282,1l-2n:.0283, 2l-5n:.0261,3l-3n:
+mode <- "neuralNetwork" # 1l-3n:.0282,1l-2n:.0283, 2l-5n:.0261,3l-3n:
 # mode <- "neuralMxnet"
 # mode <- "neuralBenchmark"
 # mode <- "boostedDecisionTrees"
 # mode = "randomForest"
-mode <- "vif"
+# mode <- "vif"
 
 system.time(
   # result <- main("design", c(4,3,3))
-  # result <- main("emotion",  c(3), palette = "Accent")
+  result <- main("emotion",  c(5,3,2), palette = "Accent")
   # result <- main("emotion",  c(3), palette = "Dark2")
   # result <- main("emotion",  c(3), palette = "Pastel1")
   # result <- main("emotion",  c(3), palette = "Set1")
   # result <- main("emotion",  c(3), palette = "Set2")
   # result <- main("emotion",  c(3), palette = "Set3")
-  # result <- main(, c(3,3))
+  # result <- main(, c(5,5,5))
+  # result <- main(, c(5,3,2))
+  
   # result <- main()
   # result <- main("design")
-  result <- main("emotion")
+  # result <- main("emotion")
 )
 
 result %>% as.data.frame()
