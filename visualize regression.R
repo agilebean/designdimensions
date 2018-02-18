@@ -5,18 +5,36 @@ library(magrittr)
 library(ggplot2)
 library(stargazer)
 library(rio)
-source("/Users/Chaehan/Dropbox/01 IDAS Prof/06 Data Analysis/06 R Scripts/utils.R")
+# source("/Users/Chaehan/Dropbox/01 IDAS Prof/06 Data Analysis/06 R Scripts/utils.R")
+# prefix <- gsub("^(/.*/.*?)/.*", "\\1", getwd())
+# source(paste0(prefix, "/Dropbox/01 IDAS Prof/06 Data Analysis/06 R Scripts/utils.R"))
+# set_input_output_dir()
+# inputDir
+# outputDir
 
-prefix <- gsub("^(/.*/.*?)/.*", "\\1", getwd())
-source(paste0(prefix, "/Dropbox/01 IDAS Prof/06 Data Analysis/06 R Scripts/utils.R"))
-set_input_output_dir()
-inputDir
-outputDir
-
-# setwd(inputDir)
-setwd(outputDir)
+library(comfort)
 library(visreg) # visreg > can be replaced by ggplot
 library(arm) # coefplot() > great! with confidence intervals!
+
+inputDir <- inputML
+outputDir <- "/Users/Chaehan/Google Drive/03 Publishing/20 Design Dimensions/_output"
+setwd(inputDir)
+setwd(outputDir)
+
+Novelty     <- c("exciting", "unique", "creative") # alternative name: Modern
+Energy      <- c("powerful",  "clever", "intuitive") # "clever" replaced "elegant"
+Simplicity  <- c("clear", "simple", "minimalistic") # "simple" replaced "dynamic"
+Tool        <- c("practical", "functional", "useful")
+
+Dimensions  <- c("Novelty", "Energy", "Simplicity", "Tool")
+Emotions    <- c(
+  "interested"
+  , "inspired"
+  # , "pleasantly.surprised"
+  , "pleasantly"
+  , "pleased"
+  , "excited"
+)
 
 
 do_linear_regression <- function(data, DV, regressors)
@@ -38,6 +56,7 @@ do_linear_regression <- function(data, DV, regressors)
 
 # # # # # # # # 
 # BUG: Simplicity not shown!
+# 
 
 create_df_from_dim_names <- function(dim_names, DV, input_file)
 {
@@ -63,6 +82,14 @@ create_df_from_dim_names <- function(dim_names, DV, input_file)
   }
   dim.df %>% as.data.frame %>% cbind(input_file[DV], .) %>% 
     return(.)
+}
+
+create_df_from_items <- function(dim_item_names, input_file)
+{
+  df_from_items <- lapply(dim_item_names,
+                          function(item) input_file[, grepl(item, names(input_file)),
+                                                    drop=FALSE]) %>% as.data.frame
+  return(df_from_items)
 }
 
 main <- function()
@@ -99,11 +126,8 @@ main <- function()
   ##########################################################
   
   # model4: lm over only Design Dimensions
-  df.dimensions   <- Dimensions %>% 
-                          create_df_from_dim_names(., DV, data.raw)
-  model.dimensions <- df.dimensions %>%  
-                          do_linear_regression(., DV, Dimensions)
-  
+  # 
+
   model.dimensions <- Dimensions %>% 
     create_df_from_dim_names(., DV, data.raw) %>%  
     do_linear_regression(., DV, Dimensions)
