@@ -126,10 +126,8 @@ main <- function()
   ##########################################################
   
   # model4: lm over only Design Dimensions
-  # 
-
-  model.dimensions <- Dimensions %>% 
-    create_df_from_dim_names(., DV, data.raw) %>%  
+  model.dimensions <- Dimensions %>%
+    create_df_from_dim_names(., DV, data.raw) %>%
     do_linear_regression(., DV, Dimensions)
   
   # model5: lm over only emotions
@@ -190,19 +188,22 @@ main <- function()
   # scatter3d(Tool, NPS, Emotions)
   # ###
   
+  # ### beta coefficients
   # require(QuantPsyc)
   # lm.beta(model.Emotions[[1]])
 
-  ## visreg: visualizes regressions
+  # ### visreg: visualizes regressions
   # visreg(gg = TRUE) does NOT work
   # par("mar" = c(4.5,5,1,1))
   # plot.list <- features %>% .[-1] %>% 
   #   lapply(., function(item) {
   #     visreg(model, item, plot=FALSE) # %>% plot(., gg=TRUE)
   #     })
-
   # require(cowplot)
   # plot <- plot_grid(plot.list)
+  # 
+  # does NOT work:
+  # visreg2d(model.dimensions[[1]],x="Novelty",y="Tool",plot.type="persp")
   
   return(list(model.all, model.design.descriptives, model.emotions, 
               model.dimensions, model.Emotions, gg))
@@ -217,11 +218,7 @@ models[[2]][[2]] %>% replayPlot # design descriptives
 models[[3]][[2]] %>% replayPlot # emotions
 models[[4]][[2]] %>% replayPlot # Design Dimensions
 models[[5]][[1]] %>% print # lm(Emotions)
+models[[5]]
 models[[6]]      %>% print # gganimate ojbect
-
-# fit <- lm(Ozone ~ Solar.R + Wind + Temp + I(Wind^2) + I(Temp^2) +
-#             I(Wind*Temp)+I(Wind*Temp^2) + I(Temp*Wind^2) + I(Temp^2*Wind^2),
-#           data=airquality)
-# visreg2d(fit,x="Wind",y="Temp",plot.type="persp")
 
 
