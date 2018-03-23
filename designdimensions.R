@@ -6,11 +6,8 @@ library(magrittr)
 library(neuralnet)
 library(NeuralNetTools)
 library(car)
-library(setdir)
+# devtools::install_github("agilebean/comfort")
 library(comfort)
-inputDV
-inputML
-
 
 ######################################################################
 
@@ -469,14 +466,14 @@ mode <- "neuralNetwork" # 1l-3n:.0282,1l-2n:.0283, 2l-5n:.0261,3l-3n:
 
 system.time(
   # result <- main("design", c(4,3,3))
-  result <- main("emotion",  c(5,3,2), palette = "Accent")
+  # result <- main("emotion",  c(5,3,2), palette = "Accent")
   # result <- main("emotion",  c(3), palette = "Dark2")
   # result <- main("emotion",  c(3), palette = "Pastel1")
   # result <- main("emotion",  c(3), palette = "Set1")
   # result <- main("emotion",  c(3), palette = "Set2")
   # result <- main("emotion",  c(3), palette = "Set3")
-  # result <- main(, c(5,5,5))
-  # result <- main(, c(5,3,2))
+  result <- main(, c(5,5,5))
+  # result <- main(, c(7))
   
   # result <- main()
   # result <- main("design")
