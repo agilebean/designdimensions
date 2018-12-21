@@ -5,9 +5,9 @@ library(dplyr)
 library(magrittr)
 library(neuralnet)
 library(NeuralNetTools)
-library(car)
+# library(car) # VIF
 # devtools::install_github("agilebean/comfort")
-library(comfort)
+library(comfort)  
 
 ######################################################################
 
@@ -59,14 +59,13 @@ print_separate_predictions <- function(DV, predicted_nn, predicted_lm, palette_l
 # Get data: Extracts the feature set from raw data
 #
 ######################################################################
-get_data <- function(DV, features, split_ratio)
+get_data <- function(DV, features, split_ratio, seed = 17)
 {
   # data  <- read_machinelearning_data(DV, features, inputML) %>%
   #   select(., one_of(c(DV, features)))
   require(dplyr)
   require(tidyr)
-  setwd(inputML)
-  data <- readRDS("data.raw.1955.rds") %>% tbl_df %>%
+  data <- readRDS("data/data.raw.1955.rds") %>% tbl_df %>%
     # explicit dplyr call necessary -> unused argument error (one_of)!!
     dplyr::select(., one_of(c(DV,features)))
 
@@ -80,10 +79,14 @@ get_data <- function(DV, features, split_ratio)
 
   # Use scale() and convert the resulting matrix to a data frame
   data.scaled <- as.data.frame(scale(data,center = mins, scale = maxs - mins))
+  
+  # shuffle data
+  set.seed(seed)
+  data.scaled <- data.scaled[sample(nrow(data.scaled)),]
 
   # Create Split (any column is fine)
   require(caTools)
-  set.seed(101)
+  set.seed(seed)
   split <-  sample.split(data.scaled[,1], SplitRatio = split_ratio)
 
   # Split based off of split Boolean Vector
@@ -121,15 +124,15 @@ do_linear_regression <- function(DV, formula, training_set, testing_set)
   # summary(lm.fit) %>% lapply(., function(x) round(x, digits=2)) # doesn't work
   
   # multicollinearity test with Variance Inflation Factors
-  lm.fit %>% car::vif()
+  # lm.fit %>% car::vif()
   
-  predicted.lm <- predict(lm.fit,testing_set) # vector
+  predictions <- predict(lm.fit,testing_set) # vector
   
-  MSE.lm <- (sum((predicted.lm - testing_set[DV])^2)/nrow(testing_set) ) %>%
-    round(digits = 4)
-  MSE.lm %>% paste(., "MSE-Linear Regression") %>% print
+  lm.fit$mse <- mean((testing_set[, DV] - predictions)^2) %>% 
+    round(digits = 4) %T>% 
+    { print(paste(., "MSE-Linear Regression")) }
 
-  return(predicted.lm)
+  return(lm.fit)
 }
 
 ######################################################################
@@ -138,50 +141,77 @@ do_linear_regression <- function(DV, formula, training_set, testing_set)
 #
 ######################################################################
 
+
 ######################################################################
-# Boosted Decision Trees
+# Gradient Boosting Machines
 ######################################################################
-train_boosted_decision_tree <- function(DV, formula, training_set, testing_set, palette)
+train_gbm <- function(DV, formula, training_set, testing_set, 
+                      n_trees, tune_grid)
 {
   require(gbm)
-
-  fit <- gbm(formula = formula,
-             data = training_set,
-             distribution="gaussian")
-
-  # summarize the fit
+  require(caret)
+  
+  # train the GBM model
+  model.gbm <- caret::train(formula, 
+                      method = "gbm",
+                      data = training_set,
+                      tuneGrid = tune_grid
+  )
+  
+  # summarize the model.gbm
   par(las=1)
   par(mar=c(3,6,1,2))
-  summary(fit)
+  summary(model.gbm)
+  
   # make predictions
-  predictions <- predict(fit, testing_set, n.trees = 4)
+  predictions <- predict(model.gbm, testing_set, n.trees = n_trees)
+  
   # summarize accuracy
   mse <- mean((testing_set[,DV] - predictions)^2)
-  mse %>% round(digits = 4) %>% paste(., "MSE-Boosted Decision Trees")%>% print
-
-  return(fit)
+  
+  # include mse in output and print to console
+  model.gbm$mse <- mse %>% 
+    round(digits = 4)  %T>%
+    { print(paste(., "MSE-Gradient Boosting Machines")) }
+  
+  return(model.gbm)
 }
 
 ######################################################################
 # Random Forests
 ######################################################################
-trainRandomForest <- function(DV, formula, training_set, testing_set, palette)
+trainRandomForest <- function(DV, formula, training_set, testing_set, seed=17)
 {
   require(randomForest)
-  model <- randomForest(formula, ntree = 500, data = training_set)
-  mse <- model %>% .$mse %>% .[length(.)] %>% round(digits = 4) %T>%
-  { print(paste(., "MSE-Random Forests")) }
+  
+  set.seed(seed)
+  model.rf <- randomForest(formula, data = training_set)
+  
+  # model.rf <- caret::train(formula, 
+  #                          data = training_set,
+  #                          method = "rf",
+  #                          tuneGrid = expand.grid(.mtry = c(3,4,5)),
+  #                          # trControl = trainControl(method = "cv", number = 10),
+  #                          metric = "RMSE"
+  #                          )
 
   # predict
-  prediction <- predict(model, newdata = testing_set)
+  # predictions <- predict(model.rf, newdata = testing_set)
+  predictions <- predict(model.rf, data = testing_set)
+  
+  # summarize accuracy
+  mse <- mean((testing_set[,DV] - predictions)^2)
+  
+  # include mse in output and print to console
+  model.rf$mse <- mse %>%
+    round(digits = 4)  %T>%
+    { print(paste(., "MSE-Random Forests")) }
 
-  # table(pred, testing_set[,DV])
-  pred.plot <- plot(prediction) %>% recordPlot
+  ## tricky: only for randomForest() not caret::train()!
+  # model.rf$plot.imp <- varImpPlot(model.rf) %>% recordPlot
 
-  imp.plot <- varImpPlot(model) %>% recordPlot
-
-  return(list(model, pred.plot, imp.plot))
-
+  # return(list(model, plot.pred, plot.imp))
+  return(model.rf)
 }
 
 ######################################################################
@@ -345,7 +375,7 @@ trainMxnetNeural <- function(DV, formula, training_set, testing_set,
 #
 ######################################################################
 
-main <- function(item_type=NULL, hidden_layers=NULL, palette="Set1")
+main <- function(item_type=NULL, hidden_layers=NULL, palette="Set1", seed = 17, n_trees = 500)
 {
   #########################################################################################
   # define DV
@@ -354,9 +384,9 @@ main <- function(item_type=NULL, hidden_layers=NULL, palette="Set1")
   #########################################################################################
   # define features
   #
-  design.descriptives <- inputML %>% paste0(., "design.descriptives.rds") %>% readRDS
+  design.descriptives <-  readRDS("data/design.descriptives.rds")
 
-  emotions <- inputML %>% paste0(., "emotions.rds") %>% readRDS %>%
+  emotions <- readRDS("data/emotions.rds") %>%
     gsub("pleasantly.surprised", "pleasantly", .)
 
   if(is.null(item_type))
@@ -376,7 +406,8 @@ main <- function(item_type=NULL, hidden_layers=NULL, palette="Set1")
   #########################################################################################
   # generate training/testing set
   #
-  data.list <- get_data(DV, features, split_ratio = 0.70)
+  set.seed(seed)
+  data.list <- get_data(DV, features, split_ratio = 0.70, seed)
   formula     <- data.list[[1]] # contains all features
   trainingset <- data.list[[2]]
   testingset  <- data.list[[3]]
@@ -389,6 +420,11 @@ main <- function(item_type=NULL, hidden_layers=NULL, palette="Set1")
   #########################################################################################
   # run machine learning model
   #
+  library(doParallel)
+  cluster.new <- makeCluster(detectCores() -1)
+  registerDoParallel(cluster.new)
+  
+  set.seed(seed)
   if (mode=="neuralNetwork")
   {
     result <- trainNeuralNetwork(DV, formula,
@@ -415,10 +451,19 @@ main <- function(item_type=NULL, hidden_layers=NULL, palette="Set1")
     result <- train_boosted_decision_tree(DV, formula, trainingset, testingset,
                                           palette = palette) # Paired, RdBu
 
+  } else if (mode == "gbm") {
+    
+    tune.grid <- expand.grid(.interaction.depth = c(3, 4, 5), 
+                             .n.trees = c(100, 150, 200),
+                             .shrinkage = c(0.01, 0.05, 0.1),
+                             .n.minobsinnode = c(3, 5, 7))
+    
+    result <- train_gbm(DV, formula, trainingset, testingset,
+                        n_trees = 100, tune_grid = tune.grid)
+    
   } else if (mode=="randomForest") {
 
-    result <- trainRandomForest(DV, formula, trainingset, testingset,
-                                palette = palette) # Paired, RdBu
+    result <- trainRandomForest(DV, formula, trainingset, testingset, seed)
 
   } else if (mode=="neuralBenchmark") {
 
@@ -453,15 +498,17 @@ main <- function(item_type=NULL, hidden_layers=NULL, palette="Set1")
     result <- lm(formula, data=trainingset) %>% car::vif() %>% round(digits = 2)
 
   }
+  stopCluster(cluster.new)
 
   return(result)
 }
 
-mode <- "neuralNetwork" # 1l-3n:.0282,1l-2n:.0283, 2l-5n:.0261,3l-3n:
+# mode <- "neuralNetwork" # 1l-3n:.0282,1l-2n:.0283, 2l-5n:.0261,3l-3n:
 # mode <- "neuralMxnet"
 # mode <- "neuralBenchmark"
 # mode <- "boostedDecisionTrees"
-# mode = "randomForest"
+# mode <- "gbm"
+mode = "randomForest"
 # mode <- "vif"
 
 system.time(
@@ -472,16 +519,37 @@ system.time(
   # result <- main("emotion",  c(3), palette = "Set1")
   # result <- main("emotion",  c(3), palette = "Set2")
   # result <- main("emotion",  c(3), palette = "Set3")
-  result <- main(, c(5,5,5))
+  # result <- main(, c(5,5,5))
   # result <- main(, c(7))
-  
+
   # result <- main()
+  result <- main(, seed = 6)
   # result <- main("design")
   # result <- main("emotion")
 )
 
-result %>% as.data.frame()
-result %>% mean %>% round(digits = 2)
+result.rf <- NULL
+result.rf$all <- result
+# result.rf$design <- result
+result.rf$emotion <- result
+result.rf$emotion$mse
+
+# result.gbm$all <- result
+# result.gbm$design <- result
+# result.gbm$emotion <- result
+# result.gbm$emotion$mse
+
+result.gbm$all$results %>% filter(RMSE==min(RMSE))
+# show variable importance (shown in Var)
+result %>% summary
+result %>% varImp
+
+# show all results and describe best configuration (last line)
+result
+
+# show best configuration
+result$results %>% 
+  filter(RMSE == min(RMSE))
 
 
 #### random forests
@@ -495,4 +563,44 @@ result[[2]] # predictions
 result[[2]] + scale_color_brewer("Paired") # changes but not with this palette
 # neural network
 result[[1]] %>% plotnet
+
+
+
+
+
+
+#########################################################################################
+# generate training/testing set
+#
+library(dplyr)
+design.descriptives <-  readRDS("data/design.descriptives.rds")
+emotions <- readRDS("data/emotions.rds") %>%
+  gsub("pleasantly.surprised", "pleasantly", .)
+features <- c(design.descriptives, emotions)
+DV <- "NPS"
+data.list <- get_data(DV, features, split_ratio = 0.70)
+formula1    <- data.list[[1]] # contains all features
+trainingset <- data.list[[2]]
+testingset  <- data.list[[3]]
+
+
+fit1 <- gbm::gbm(formula = formula1,
+           data = trainingset,
+           # distribution = "gaussian",
+           verbose = TRUE)
+fit1 %>% attributes
+fit1 %>% summary
+
+library(gbm)
+library(caret)
+set.seed(1)
+fit2 <- caret::train(formula1, 
+                     method = "gbm",
+                     data = trainingset)
+fit2
+fit2 %>% summary
+fit2$results %>% filter(RMSE == min(RMSE))
+
+
+
 
